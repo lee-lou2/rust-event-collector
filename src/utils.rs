@@ -1,29 +1,47 @@
 use crate::handlers::EventSchema;
+use chrono::Datelike;
 use opensearch::{BulkParts, OpenSearch};
-use rusqlite::Connection;
 use serde_json::{json, Value};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use sqlx::SqlitePool;
 
-// 펜딩된 이벤트 등록
-pub async fn insert_pending_event(event: &EventSchema, conn: Arc<Mutex<Connection>>) {
-    // 데이터베이스에 저장
-    println!("Event inserted into SQLite successfully.");
-    let locked_conn = conn.lock().await;
-    let log = serde_json::to_string(&event).unwrap();
-    locked_conn
-        .execute("INSERT INTO events (log) VALUES (?1)", [&log])
-        .unwrap();
+/// Register pending events
+/// Save pending data to the database when the channel is full or an error occurs while saving to OpenSearch.
+/// The stored data will be retrieved periodically and reinserted into OpenSearch.
+pub async fn insert_pending_events(
+    events: &[EventSchema],
+    db_pool: &SqlitePool,
+) -> Result<(), sqlx::Error> {
+    // Start transaction
+    let mut tx = db_pool.begin().await?;
+    for event in events {
+        // Serialize event to JSON string
+        let serialized_event = serde_json::to_string(event).unwrap();
+        // Use placeholders in the query and bind values
+        sqlx::query!("INSERT INTO events (log) VALUES (?)", serialized_event)
+            .execute(&mut *tx) // Explicitly dereference transaction
+            .await?;
+    }
+    // Commit transaction
+    tx.commit().await?;
+    Ok(())
 }
 
-// 이벤트 대량 등록
+/// Bulk insert events
+/// Code for storing a large number of events in bulk in OpenSearch.
+/// If an error occurs during saving, the data is saved in the pending database and the error is output.
 pub async fn insert_events_bulk(
     events: &[EventSchema],
     open_search_client: &OpenSearch,
-    conn: Arc<Mutex<Connection>>,
+    db_pool: &SqlitePool,
 ) {
-    // 오픈서치에 저장
-    let index_name = "events";
+    let now = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(9 * 3600).unwrap());
+    let envs = crate::config::get_environments();
+    let index_name = format!(
+        "events_{}_{}-{}",
+        &envs.server_environment,
+        now.year(),
+        now.month()
+    );
 
     let mut bulk_lines = Vec::with_capacity(events.len() * 2);
     for event in events {
@@ -35,7 +53,7 @@ pub async fn insert_events_bulk(
 
     let response = open_search_client
         .bulk(BulkParts::None)
-        .body(bulk_lines) // Vec<String>을 전달
+        .body(bulk_lines) // Pass Vec<String>
         .send()
         .await;
 
@@ -45,10 +63,13 @@ pub async fn insert_events_bulk(
             let body: Value = match res.json().await {
                 Ok(v) => v,
                 Err(e) => {
-                    // 이벤트 등록 실패 시 펜딩 데이터베이스에 저장
+                    // Save to pending database if event registration fails
                     eprintln!("Failed to parse bulk response: {:?}", e);
-                    for event in events {
-                        insert_pending_event(event, conn.clone()).await;
+                    match insert_pending_events(events, db_pool).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("Failed to insert pending events: {:?}", e);
+                        }
                     }
                     return;
                 }
@@ -59,9 +80,11 @@ pub async fn insert_events_bulk(
                     "Bulk insert request failed with status {}: {:?}",
                     status, body
                 );
-                for event in events {
-                    // 이벤트 등록 실패 시 펜딩 데이터베이스에 저장
-                    insert_pending_event(event, conn.clone()).await;
+                match insert_pending_events(events, db_pool).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("Failed to insert pending events: {:?}", e);
+                    }
                 }
                 return;
             }
@@ -70,23 +93,29 @@ pub async fn insert_events_bulk(
             if errors {
                 let blank_vec = vec![];
                 let items = body["items"].as_array().unwrap_or(&blank_vec);
+                let mut failed_events = vec![];
                 for (i, item) in items.iter().enumerate() {
                     if let Some(index_res) = item.get("index") {
                         let st = index_res["status"].as_u64().unwrap_or(0);
-                        if st < 200 || st >= 300 {
+                        if !(200..300).contains(&st) {
                             if let Some(event) = events.get(i) {
                                 eprintln!(
                                     "Failed to insert event into OpenSearch (status: {}): {:?}",
                                     st, index_res
                                 );
-                                // 이벤트 등록 실패 시 펜딩 데이터베이스에 저장
-                                insert_pending_event(event, conn.clone()).await;
+                                failed_events.push((*event).clone());
                             }
                         }
-                    } else {
-                        if let Some(event) = events.get(i) {
-                            insert_pending_event(event, conn.clone()).await;
-                        }
+                    } else if let Some(event) = events.get(i) {
+                        failed_events.push((*event).clone());
+                    }
+                }
+                // Save failed data as pending
+                let events = &failed_events[..];
+                match insert_pending_events(events, db_pool).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("Failed to insert pending events: {:?}", e);
                     }
                 }
             } else {
@@ -98,9 +127,11 @@ pub async fn insert_events_bulk(
         }
         Err(e) => {
             eprintln!("Failed to send bulk request to OpenSearch: {:?}", e);
-            for event in events {
-                // 이벤트 등록 실패 시 펜딩 데이터베이스에 저장
-                insert_pending_event(event, conn.clone()).await;
+            match insert_pending_events(events, db_pool).await {
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Failed to insert pending events: {:?}", e);
+                }
             }
         }
     }

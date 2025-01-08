@@ -1,28 +1,42 @@
-use axum::response::IntoResponse;
 use axum::{
     body::Body,
     http::{header::AUTHORIZATION, Request, StatusCode},
     middleware::Next,
+    response::IntoResponse,
 };
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
 
-// 인증 미들웨어
-pub async fn auth_middleware(req: Request<Body>, next: Next) -> axum::response::Response {
-    // ping 은 인증하지 않음
-    if req.uri().path() == "/ping" {
-        return next.run(req).await;
-    }
+/// JWT Token Claims
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+}
 
-    // API 키 확인
-    let auth_header = req.headers().get(AUTHORIZATION);
-    if let Some(value) = auth_header {
-        if let Ok(auth_str) = value.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                let expected = std::env::var("API_KEY").unwrap_or_default();
-                if token == expected {
-                    return next.run(req).await;
-                }
-            }
-        }
-    }
-    StatusCode::UNAUTHORIZED.into_response()
+pub async fn jwt_auth_middleware(mut req: Request<Body>, next: Next) -> impl IntoResponse {
+    let Some(auth_value) = req.headers().get(AUTHORIZATION) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+
+    let Ok(auth_str) = auth_value.to_str() else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+
+    let Some(token) = auth_str.strip_prefix("Bearer ") else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+
+    let envs = crate::config::get_environments();
+    let token_data = match decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(envs.jwt_secret.as_bytes()),
+        &Validation::default(),
+    ) {
+        Ok(data) => data,
+        Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    req.extensions_mut().insert(token_data.claims);
+    next.run(req).await
 }
