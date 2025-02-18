@@ -21,7 +21,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() {
     // Initialize logging
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_level(true),
+        )
+        .with(tracing_subscriber::filter::LevelFilter::DEBUG)
         .init();
 
     // OpenSearch client configuration
