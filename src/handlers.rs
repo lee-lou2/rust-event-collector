@@ -64,18 +64,17 @@ pub async fn create_events_handler(
         event_info: payload,
     };
 
-    match state.tx.try_send(data) {
-        Ok(_) => "created",
-        Err(e) => {
-            eprintln!("Error sending data to channel: {:?}", e);
-            let payload = e.into_inner();
-            match insert_pending_events(&[payload], &state.conn).await {
-                Ok(_) => {}
-                Err(e) => {
-                    eprintln!("Error inserting pending events: {:?}", e);
-                }
+    let cloned_data = data.clone();
+    if let Err(e) = state.tx.send(data).await {
+        eprintln!("Error sending data to channel: {:?}", e);
+        match insert_pending_events(&[cloned_data], &state.conn).await {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("Error inserting pending events: {:?}", e);
             }
-            "pending"
         }
+        "pending"
+    } else {
+        "created"
     }
 }

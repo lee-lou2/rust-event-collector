@@ -77,7 +77,7 @@ pub async fn schedule_insert_pending_events(
     tokio::spawn({
         // Clone basic information
         let db_pool = db_pool.clone();
-        let tx = Arc::new(tx.clone());
+        let cloned_tx = tx.clone();
 
         async move {
             // Set repeat period
@@ -95,23 +95,17 @@ pub async fn schedule_insert_pending_events(
                             let id = row.id;
                             let log = row.log.unwrap_or(String::from(""));
                             let data: EventSchema = from_str(&log).unwrap();
-                            match tx.try_send(data) {
-                                Ok(_) => {
-                                    match sqlx::query!("DELETE FROM events WHERE id = ?", id)
-                                        .execute(&db_pool)
-                                        .await
-                                    {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            eprintln!(
-                                                "Error deleting event with id {}: {:?}",
-                                                id, e
-                                            );
-                                        }
+                            if let Err(e) = cloned_tx.send(data).await {
+                                eprintln!("Error sending data to channel: {:?}", e);
+                            } else {
+                                match sqlx::query!("DELETE FROM events WHERE id = ?", id)
+                                    .execute(&db_pool)
+                                    .await
+                                {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        eprintln!("Error deleting event with id {}: {:?}", id, e);
                                     }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error sending data to channel: {:?}", e);
                                 }
                             }
                         }
