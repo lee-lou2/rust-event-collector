@@ -66,13 +66,9 @@ async fn main() {
         .layer(TraceLayer::new_for_http());
 
     // Start the server
-    let listener =
-        tokio::net::TcpListener::bind(format!("{}:{}", &envs.server_host, &envs.server_port))
-            .await
-            .unwrap();
-    println!(
-        "Server is running at http://{}:{}",
-        &envs.server_host, &envs.server_port
-    );
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", &envs.server_port))
+        .await
+        .unwrap();
+    println!("Server is running at http://0.0.0.0:{}", &envs.server_port);
     axum::serve(listener, app).await.unwrap();
 }

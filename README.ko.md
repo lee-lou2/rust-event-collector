@@ -39,7 +39,6 @@ cd https://github.com/lee-lou2/rust-event-collector
 
 ``` dotenv
 OPEN_SEARCH_DNS=http://localhost:9200
-SERVER_HOST=0.0.0.0
 SERVER_PORT=3000
 JWT_SECRET=
 SERVER_ENVIRONMENT=local

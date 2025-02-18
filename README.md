@@ -42,7 +42,6 @@ Before running the project, add the following variables to the `.env` file:
 
 ```dotenv
 OPEN_SEARCH_DNS=http://localhost:9200
-SERVER_HOST=0.0.0.0
 SERVER_PORT=3000
 JWT_SECRET=
 SERVER_ENVIRONMENT=local

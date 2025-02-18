@@ -4,7 +4,6 @@ use std::env;
 
 #[derive(Debug)]
 pub struct Environment {
-    pub server_host: String,
     pub server_port: String,
     pub jwt_secret: String,
     pub server_environment: String,
@@ -15,7 +14,6 @@ pub struct Environment {
 static ENVIRONMENTS: Lazy<Environment> = Lazy::new(|| {
     dotenv().ok();
     Environment {
-        server_host: env::var("SERVER_HOST").unwrap_or_else(|_| "localhost".to_string()),
         server_port: env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string()),
         jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| "".to_string()),
         server_environment: env::var("SERVER_ENVIRONMENT")
