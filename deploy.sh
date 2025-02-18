@@ -1,5 +1,5 @@
 #!/bin/bash
-IMAGE_NAME="rust-events"
+IMAGE_NAME="rust-event-collector"
 IMAGE_TAG="latest"
 INTERNAL_SERVER_PORT=3000
 EXTERNAL_SERVER_PORT=3000
@@ -16,4 +16,4 @@ docker run --name ${IMAGE_NAME} \
   -d \
   -p ${INTERNAL_SERVER_PORT}:${EXTERNAL_SERVER_PORT} \
   ${IMAGE_NAME}:${IMAGE_TAG} \
-  sh -c "cargo run --release && ./target/release/events"%
+  sh -c "cargo run --release && ./target/release/rust-event-collector"%

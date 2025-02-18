@@ -32,8 +32,8 @@ This project was developed using Rust. Rust and Cargo must be installed on your 
 ### 2. Clone Project
 
 ```bash
-git clone https://github.com/lee-lou2/rust-events
-cd https://github.com/lee-lou2/rust-events
+git clone https://github.com/lee-lou2/rust-event-collector
+cd https://github.com/lee-lou2/rust-event-collector
 ```
 
 ### 3. Environment Variable Setup

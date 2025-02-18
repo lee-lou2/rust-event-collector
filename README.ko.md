@@ -29,8 +29,8 @@
 ### 2. 프로젝트 클론
 
 ``` bash
-git clone https://github.com/lee-lou2/rust-events
-cd https://github.com/lee-lou2/rust-events
+git clone https://github.com/lee-lou2/rust-event-collector
+cd https://github.com/lee-lou2/rust-event-collector
 ```
 
 ### 3. 환경 변수 설정
