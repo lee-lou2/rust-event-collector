@@ -16,15 +16,15 @@ pub struct Claims {
 
 pub async fn jwt_auth_middleware(mut req: Request<Body>, next: Next) -> impl IntoResponse {
     let Some(auth_value) = req.headers().get(AUTHORIZATION) else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return (StatusCode::UNAUTHORIZED, "No authorization header").into_response();
     };
 
     let Ok(auth_str) = auth_value.to_str() else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return (StatusCode::UNAUTHORIZED, "Invalid authorization header").into_response();
     };
 
     let Some(token) = auth_str.strip_prefix("Bearer ") else {
-        return StatusCode::UNAUTHORIZED.into_response();
+        return (StatusCode::UNAUTHORIZED, "Invalid authorization header").into_response();
     };
 
     let envs = crate::config::get_environments();
@@ -34,7 +34,7 @@ pub async fn jwt_auth_middleware(mut req: Request<Body>, next: Next) -> impl Int
         &Validation::default(),
     ) {
         Ok(data) => data,
-        Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+        Err(_) => return (StatusCode::UNAUTHORIZED, "Invalid token").into_response(),
     };
 
     req.extensions_mut().insert(token_data.claims);
